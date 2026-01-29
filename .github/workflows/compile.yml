@@ -2,7 +2,7 @@ name: Build and Deploy Firmware
 
 on:
   push:
-    branches: [ main ] # Se déclenche quand tu modifies ton code sur la branche principale
+    branches: [ main ]
 
 jobs:
   build:
@@ -22,23 +22,23 @@ jobs:
 
       - name: Install Libraries
         run: |
-          # Installation des bibliothèques nécessaires à ton projet
           arduino-cli lib install "ESP32 HUB75 LED MATRIX PANEL DMA Display"
           arduino-cli lib install "Adafruit GFX Library"
+          arduino-cli lib install "WiFiManager" # Optionnel mais utile pour le futur
 
-      - name: Compile Sketch
+      - name: Compile Sketch with Secrets
         run: |
-          # 1. On crée le dossier qui va recevoir le binaire
           mkdir -p build
-          # 2. On compile le fichier starlings-box.ino
-          # On utilise le FQBN standard pour ESP32 Dev Module
-          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./build ./starlings-box.ino
+          # Injection des secrets dans le code via des flags de compilation
+          arduino-cli compile --fqbn esp32:esp32:esp32 \
+            --build-property "build.extra_flags=-DWIFI_SSID=\"${{ secrets.WIFI_SSID }}\" -DWIFI_PASS=\"${{ secrets.WIFI_PASS }}\"" \
+            --output-dir ./build ./starlings-box.ino
 
       - name: Deploy Binary to Branch
         uses: s0/git-publish-subdir-action@develop
         env:
           REPO: self
-          BRANCH: build-bin # Le fichier compilé sera envoyé ici
+          BRANCH: build-bin
           FOLDER: build
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MESSAGE: "Auto-build firmware: {sha}"
+          MESSAGE: "Auto-build firmware (Secure): {sha}"
