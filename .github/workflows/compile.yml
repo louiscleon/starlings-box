@@ -1,11 +1,13 @@
-name: Build Firmware
+name: Build and Deploy Firmware
+
 on:
   push:
-    branches: [ main ] # Se déclenche quand tu modifies la branche principale
+    branches: [ main ] # S'exécute quand tu modifies le code sur la branche 'main'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -23,15 +25,16 @@ jobs:
           arduino-cli lib install "ESP32 HUB75 LED MATRIX PANEL DMA Display"
           arduino-cli lib install "Adafruit GFX Library"
 
-      - name: Compile
+      - name: Compile Sketch
         run: |
-          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./out ./mon_projet.ino
+          # On compile le fichier .ino et on place le résultat dans le dossier ./build
+          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./build ./murmuration_poetique.ino
 
-      - name: Push Binary to branch
+      - name: Deploy Binary to Branch
         uses: s0/git-publish-subdir-action@develop
         env:
           REPO: self
-          BRANCH: build-bin # Le .bin sera ici
-          FOLDER: out
+          BRANCH: build-bin # C'est ici que l'ESP32 ira chercher le fichier
+          FOLDER: build
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MESSAGE: "Nouveau firmware généré"
+          MESSAGE: "Auto-build firmware: {sha}"
