@@ -9,7 +9,7 @@
 // ==========================================
 //  1. PARAMÈTRES DE MISE À JOUR (OTA)
 // ==========================================
-const char* VERSION  = "1.5"; 
+const char* VERSION  = "1.6"; 
 const char* ssid     = "Bbox-B0BFCA8A";
 const char* password = "MR=gqxTd9tDSW+Mm";
 
@@ -23,7 +23,7 @@ const char* bin_url     = "https://raw.githubusercontent.com/louiscleon/starling
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
 
-static const int   NUM_BIRDS        = 120;
+static const int   NUM_BIRDS        = 2;
 static const float MAX_SPEED        = 0.55f;
 static const float MIN_SPEED        = 0.30f;
 static const float NEIGHBOR_RAD     = 8.5f;
