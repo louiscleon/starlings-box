@@ -9,13 +9,13 @@
 // ==========================================
 //  PARAMÈTRES DE MISE À JOUR (OTA)
 // ==========================================
-const char* VERSION  = "1.1"; // <--- Incrémente ce chiffre (1.1, 1.2...) pour déclencher la mise à jour
+const char* VERSION  = "1.2"; // <--- Incrémente ce chiffre (1.1, 1.2...) pour déclencher la mise à jour
 const char* ssid     = "Bbox-B0BFCA8A";
 const char* password = "MR=gqxTd9tDSW+Mm";
 
 // Remplace par tes vraies infos GitHub
 const char* version_url = "https://raw.githubusercontent.com/louiscleon/starlings-box/blob/main/version.txt";
-const char* bin_url     = "https://raw.githubusercontent.com/louiscleon/starlings-box/blob/main/starlings.ino";
+const char* bin_url     = "https://raw.githubusercontent.com/louiscleon/starlings-box/blob/main/starlings.ino.bin";
 
 // ==========================================
 //  2. PARAMÈTRES MURMURATION
