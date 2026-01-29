@@ -24,11 +24,13 @@ jobs:
         run: |
           arduino-cli lib install "ESP32 HUB75 LED MATRIX PANEL DMA Display"
           arduino-cli lib install "Adafruit GFX Library"
-
+      
       - name: Compile Sketch
-        run: |
-          # Correction ici : on cible starlings.ino
-          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./build ./starlings.ino
+              run: |
+                # On crée le dossier de sortie
+                mkdir -p build
+                # On cible maintenant starlings-box.ino pour correspondre au dossier du runner
+                arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./build ./starlings-box.ino
 
       - name: Deploy Binary to Branch
         uses: s0/git-publish-subdir-action@develop
