@@ -10,8 +10,14 @@
 //  1. PARAMÈTRES DE MISE À JOUR (OTA)
 // ==========================================
 const char* VERSION  = "1.6"; 
-const char* ssid     = "Bbox-B0BFCA8A";
-const char* password = "MR=gqxTd9tDSW+Mm";
+// On vérifie si les secrets ont été injectés par GitHub
+#ifndef WIFI_SSID
+  #define WIFI_SSID "SSID_PAR_DEFAUT" // Ce qui sera utilisé si tu compiles sur ton PC
+  #define WIFI_PASS "PASS_PAR_DEFAUT"
+#endif
+
+const char* ssid     = WIFI_SSID;
+const char* password = WIFI_PASS;
 
 // URLs de ton dépôt GitHub
 const char* version_url = "https://raw.githubusercontent.com/louiscleon/starlings-box/main/version.txt";
