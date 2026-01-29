@@ -1,3 +1,4 @@
+#include <SPI.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -9,7 +10,7 @@
 // ==========================================
 //  1. PARAMÈTRES DE MISE À JOUR (OTA)
 // ==========================================
-const char* VERSION  = "1.8"; 
+const char* VERSION  = "1.9"; 
 // On vérifie si les secrets ont été injectés par GitHub
 #ifndef WIFI_SSID
   #define WIFI_SSID "SSID_PAR_DEFAUT" // Ce qui sera utilisé si tu compiles sur ton PC
