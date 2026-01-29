@@ -1,13 +1,10 @@
 #include <Arduino.h>
 #include <SPI.h>
 
-// CORRECTIF POUR L'ERREUR 'BitOrder'
-// On définit manuellement le type que la bibliothèque Adafruit ne trouve pas
+// CORRECTIF FINAL POUR L'ERREUR 'BitOrder'
+// On définit BitOrder comme un type simple pour éviter le conflit avec les macros
 #ifndef BitOrder
-  typedef enum {
-    LSBFIRST = 0,
-    MSBFIRST = 1
-  } BitOrder;
+  typedef uint8_t BitOrder;
 #endif
 
 #include <WiFi.h>
