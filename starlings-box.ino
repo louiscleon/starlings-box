@@ -9,7 +9,7 @@
 // ==========================================
 //  PARAMÈTRES DE MISE À JOUR (OTA)
 // ==========================================
-const char* VERSION  = "1.4"; // <--- Incrémente ce chiffre (1.1, 1.2...) pour déclencher la mise à jour
+const char* VERSION  = "1.5"; // <--- Incrémente ce chiffre (1.1, 1.2...) pour déclencher la mise à jour
 const char* ssid     = "Bbox-B0BFCA8A";
 const char* password = "MR=gqxTd9tDSW+Mm";
 
@@ -28,9 +28,9 @@ MatrixPanel_I2S_DMA *dma_display = nullptr;
 // =======================
 //  MURMURATION SETTINGS
 // =======================
-static const int   NUM_BIRDS        = 1;
+static const int   NUM_BIRDS        = 120;
 
-static const float MAX_SPEED        = 0.95f;   // ralentit ≈ x0.55
+static const float MAX_SPEED        = 0.55f;   // ralentit ≈ x0.55
 static const float MIN_SPEED        = 0.30f;
 
 static const float NEIGHBOR_RAD     = 8.5f;
