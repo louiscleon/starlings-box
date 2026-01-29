@@ -1,12 +1,5 @@
 #include <Arduino.h>
 #include <SPI.h>
-
-// CORRECTIF FINAL POUR L'ERREUR 'BitOrder'
-// On définit BitOrder comme un type simple pour éviter le conflit avec les macros
-#ifndef BitOrder
-  typedef uint8_t BitOrder;
-#endif
-
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
