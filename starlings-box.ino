@@ -11,7 +11,7 @@
 // ==========================================
 //  1. PARAMÈTRES DE MISE À JOUR (OTA)
 // ==========================================
-const char* VERSION  = "2.0.1"; 
+const char* VERSION  = "2.1"; 
 // On vérifie si les secrets ont été injectés par GitHub
 #ifndef WIFI_SSID
   #define WIFI_SSID "SSID_PAR_DEFAUT" // Ce qui sera utilisé si tu compiles sur ton PC
