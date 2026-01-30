@@ -7,26 +7,30 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <vector>
 #include <cmath>
+#include <time.h> // Pour l'heure NTP
 
 // ==========================================
-//  1. PARAMÈTRES DE MISE À JOUR (OTA)
+//  1. PARAMÈTRES DE MISE À JOUR (OTA) & WIFI
 // ==========================================
-const char* VERSION  = "2.4"; 
-// On vérifie si les secrets ont été injectés par GitHub
+const char* VERSION  = "2.5"; 
 #ifndef WIFI_SSID
-  #define WIFI_SSID "SSID_PAR_DEFAUT" // Ce qui sera utilisé si tu compiles sur ton PC
+  #define WIFI_SSID "SSID_PAR_DEFAUT"
   #define WIFI_PASS "PASS_PAR_DEFAUT"
 #endif
 
 const char* ssid     = WIFI_SSID;
 const char* password = WIFI_PASS;
 
-// URLs de ton dépôt GitHub
 const char* version_url = "https://raw.githubusercontent.com/louiscleon/starlings-box/main/version.txt";
 const char* bin_url     = "https://raw.githubusercontent.com/louiscleon/starlings-box/build-bin/starlings-box.ino.bin";
 
+// Paramètres Heure
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 3600;      // UTC+1 (Paris)
+const int   daylightOffset_sec = 3600; // Heure d'été (+1h)
+
 // ==========================================
-//  2. PARAMÈTRES MURMURATION (Tes réglages)
+//  2. PARAMÈTRES MURMURATION
 // ==========================================
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
@@ -64,6 +68,8 @@ struct Bird {
 };
 
 MatrixPanel_I2S_DMA *dma_display = nullptr;
+GFXcanvas1 *clock_mask = nullptr; // Masque invisible pour l'heure
+
 static std::vector<Bird> birds;
 static uint8_t  lum[PANEL_RES_X * PANEL_RES_Y];
 static uint16_t palette[256];
@@ -72,42 +78,30 @@ static float tFlow = 0.0f, driftX = 1.0f, driftY = 0.0f;
 static bool gustOn = false;
 
 // ==========================================
-//  3. LOGIQUE DE MISE À JOUR & WIFI
+//  3. LOGIQUE DE MISE À JOUR & UTILS
 // ==========================================
 
 void check_for_updates() {
   if (WiFi.status() != WL_CONNECTED) return;
-
   WiFiClientSecure client;
-  client.setInsecure(); // GitHub HTTPS bypass
-
+  client.setInsecure();
   HTTPClient http;
   http.begin(client, version_url);
   int httpCode = http.GET();
-  
   if (httpCode == 200) {
     String newVersion = http.getString();
     newVersion.trim();
     if (newVersion != VERSION) {
-      Serial.println("Nouvelle version détectée !");
-      
-      // Feedback visuel sur la matrice LED
       dma_display->fillScreen(0);
       dma_display->setCursor(2, 12);
       dma_display->setTextColor(dma_display->color565(255, 255, 255));
       dma_display->print("UPDATING...");
       dma_display->flipDMABuffer();
-      
-      // Lancement du téléchargement
       httpUpdate.update(client, bin_url);
     }
   }
   http.end();
 }
-
-// ==========================================
-//  4. UTILS & PHYSIQUE (Ton code)
-// ==========================================
 
 static inline float clampf(float v, float a, float b){ return (v<a)?a:(v>b)?b:v; }
 static inline float fastInvSqrt(float x){ return 1.0f / sqrtf(x); }
@@ -144,10 +138,11 @@ static inline void flowVector(float x, float y, float &fx, float &fy){
 }
 
 static void buildPalette() {
-  const int sr=185, sg=205, sb=225;
+  const int sr=255, sg=255, sb=255; // Fond pur blanc
   for (int i=0;i<256;i++){
     float k = i / 255.0f;
-    palette[i] = dma_display->color565((int)(sr*(1.0f-0.85f*k)), (int)(sg*(1.0f-0.90f*k)), (int)(sb*(1.0f-0.95f*k)));
+    // Dégradé du blanc (i=0) vers le noir (i=255)
+    palette[i] = dma_display->color565((int)(sr*(1.0f-0.95f*k)), (int)(sg*(1.0f-0.95f*k)), (int)(sb*(1.0f-0.95f*k)));
   }
 }
 
@@ -227,9 +222,52 @@ static void updateBird(int i){
   b.x = clampf(b.x, 0, PANEL_RES_X-1); b.y = clampf(b.y, 0, PANEL_RES_Y-1);
 }
 
-static void decayLuminance(){ for(int i=0; i<PANEL_RES_X*PANEL_RES_Y; i++) lum[i] = (uint8_t)((lum[i]*DECAY_NUM)>>8); }
-static void deposit(int x, int y, uint8_t amount){ if(inBounds(x,y)){ int k=idx(x,y); int v=lum[k]+amount; lum[k]=(v>255)?255:(uint8_t)v; } }
-static void renderToPanel(){ for(int y=0; y<PANEL_RES_Y; y++) for(int x=0; x<PANEL_RES_X; x++) dma_display->drawPixel(x,y,palette[lum[idx(x,y)]]); }
+// ==========================================
+//  4. GESTION DE L'HEURE (POCHOIR)
+// ==========================================
+
+void updateClockMask() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    return; // Pas encore synchronisé
+  }
+  char timeString[9];
+  strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
+  
+  clock_mask->fillScreen(0); // On efface le masque
+  clock_mask->setCursor(8, 2); // Centré dans le quart supérieur
+  clock_mask->setTextColor(1); // On dessine en "allumé" (blanc dans le masque)
+  clock_mask->print(timeString);
+}
+
+static void decayLuminance(){ 
+  for(int i=0; i<PANEL_RES_X*PANEL_RES_Y; i++) lum[i] = (uint8_t)((lum[i]*DECAY_NUM)>>8); 
+}
+
+static void deposit(int x, int y, uint8_t amount){ 
+  if(inBounds(x,y)){ 
+    int k=idx(x,y); 
+    int v=lum[k]+amount; 
+    lum[k]=(v>255)?255:(uint8_t)v; 
+  } 
+}
+
+static void renderToPanel(){ 
+  for(int y=0; y<PANEL_RES_Y; y++){
+    for(int x=0; x<PANEL_RES_X; x++){
+      int k = idx(x,y);
+      uint8_t luminance = lum[k];
+
+      // LOGIQUE POCHOIR : 
+      // Si le pixel fait partie de l'heure dans le masque, on force le BLANC (palette 0)
+      if (clock_mask->getPixel(x, y)) {
+        dma_display->drawPixel(x, y, palette[0]);
+      } else {
+        dma_display->drawPixel(x, y, palette[luminance]);
+      }
+    }
+  }
+}
 
 // ==========================================
 //  5. SETUP & LOOP
@@ -249,22 +287,22 @@ void setup() {
   dma_display->begin();
   dma_display->setBrightness8(150);
 
+  // Initialisation du masque pour l'heure
+  clock_mask = new GFXcanvas1(PANEL_RES_X, PANEL_RES_Y);
+  clock_mask->setTextWrap(false);
+
   // WiFi avec boucle d'attente
-  Serial.print("WiFi Connexion...");
   WiFi.begin(ssid, password);
   int retry = 0;
   while (WiFi.status() != WL_CONNECTED && retry < 20) {
     delay(500);
-    Serial.print(".");
     retry++;
   }
 
-  // Si connecté, on vérifie l'update immédiatement
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("OK !");
+    // Synchronisation de l'heure NTP
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     check_for_updates();
-  } else {
-    Serial.println("Échec WiFi");
   }
 
   memset(lum, 0, sizeof(lum));
@@ -281,10 +319,19 @@ void loop() {
   lastFrame = now;
   tFlow += dt * FLOW_SPEED;
 
+  // Mise à jour de l'heure (toutes les secondes)
+  static uint32_t lastClockUpdate = 0;
+  if (now - lastClockUpdate > 1000) {
+    updateClockMask();
+    lastClockUpdate = now;
+  }
+
   updateGust(now);
   updateDrift(now);
   for(int i=0; i<NUM_BIRDS; i++) updateBird(i);
+  
   decayLuminance();
+  
   for(int i=0; i<NUM_BIRDS; i++){
     Bird &b = birds[i];
     deposit((int)lroundf(b.x), (int)lroundf(b.y), DEPOSIT_HEAD);
@@ -293,10 +340,11 @@ void loop() {
       deposit((int)lroundf(b.tx[age]), (int)lroundf(b.ty[age]), (uint8_t)(DEPOSIT_TAIL*(1.0f-(t/(float)TRAIL_LEN))));
     }
   }
+  
   renderToPanel();
   dma_display->flipDMABuffer();
 
-  // Vérification de mise à jour toutes les 30 min
+  // Mise à jour auto toutes les 30 min
   static uint32_t lastUpdateCheck = 0;
   if (now - lastUpdateCheck > 1800000) {
     check_for_updates();
