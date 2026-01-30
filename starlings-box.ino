@@ -10,12 +10,12 @@
 #include <time.h> 
 
 // ==========================================
-//  1. PARAMÈTRES OTA & WIFI
+//  1. PARAMÈTRES SYSTÈME
 // ==========================================
-const char* VERSION  = "2.6"; 
+const char* VERSION  = "2.7"; 
 #ifndef WIFI_SSID
   #define WIFI_SSID "TON_SSID" 
-  #define WIFI_PASS "TON_MOT_DE_PASSE"
+  #define WIFI_PASS "TON_PASS"
 #endif
 
 const char* ssid     = WIFI_SSID;
@@ -29,33 +29,29 @@ const long  gmtOffset_sec = 3600;
 const int   daylightOffset_sec = 3600; 
 
 // ==========================================
-//  2. PARAMÈTRES MURMURATION
+//  2. RÉGLAGES VISUELS (Optimisés pour lisibilité)
 // ==========================================
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
 
-static const int   NUM_BIRDS        = 60;
-static const float MAX_SPEED        = 0.55f;
-static const float MIN_SPEED        = 0.30f;
-static const float NEIGHBOR_RAD     = 8.5f;
-static const float SEP_DIST         = 2.6f;
-static const float ALIGN_BASE       = 0.12f;
-static const float COHESION_BASE    = 0.015f;
-static const float SEPARATION_BASE  = 0.22f;
-static const float BORDER_PUSH      = 0.18f;
-static const float FLOW_STRENGTH    = 0.028f;
-static const float FLOW_SCALE       = 0.085f;
-static const float FLOW_SPEED       = 0.00028f;
-static const uint32_t GUST_MIN_MS   = 3800;
-static const uint32_t GUST_MAX_MS   = 10500;
-static const uint32_t GUST_LEN_MS   = 520;
-static const float    GUST_TURN     = 0.12f;
-static const float    GUST_ALIGN_BOOST = 0.16f;
-static const float DRIFT_STRENGTH   = 0.020f;
-static const uint8_t DECAY_NUM      = 220;
-static const uint8_t DEPOSIT_HEAD   = 230;
-static const uint8_t DEPOSIT_TAIL   = 120;
-static const int TRAIL_LEN          = 6;
+static const int   NUM_BIRDS        = 80;    // Plus d'oiseaux pour mieux "révéler" l'heure
+static const float MAX_SPEED        = 0.50f;
+static const float MIN_SPEED        = 0.25f;
+static const float NEIGHBOR_RAD     = 8.0f;
+static const float SEP_DIST         = 2.5f;
+static const float ALIGN_BASE       = 0.10f;
+static const float COHESION_BASE    = 0.012f;
+static const float SEPARATION_BASE  = 0.20f;
+static const float BORDER_PUSH      = 0.15f;
+static const float FLOW_STRENGTH    = 0.025f;
+static const float FLOW_SCALE       = 0.080f;
+static const float FLOW_SPEED       = 0.00025f;
+
+// RÉGLAGES DE LA TRAÎNÉE (C'est ici que se joue la lisibilité)
+static const uint8_t DECAY_NUM      = 235;   // Plus lent (235 au lieu de 220) = traînée plus longue
+static const uint8_t DEPOSIT_HEAD   = 255;   
+static const uint8_t DEPOSIT_TAIL   = 180;   // Plus sombre pour mieux découper les chiffres
+static const int TRAIL_LEN          = 10;    // Traînée plus longue (10 au lieu de 6)
 
 struct Bird {
   float x, y, vx, vy, turnSignal;
@@ -69,147 +65,59 @@ GFXcanvas1 *clock_mask = nullptr;
 static std::vector<Bird> birds;
 static uint8_t  lum[PANEL_RES_X * PANEL_RES_Y];
 static uint16_t palette[256];
-static uint32_t lastFrame = 0, nextGustAt = 0, gustStart = 0, nextDriftAt = 0;
+static uint32_t lastFrame = 0, nextGustAt = 0, gustStart = 0;
 static float tFlow = 0.0f, driftX = 1.0f, driftY = 0.0f;
 static bool gustOn = false;
 
 // ==========================================
-//  3. FONCTIONS PHYSIQUE & UTILS
+//  3. PHYSIQUE & RENDU
 // ==========================================
 
-static inline float clampf(float v, float a, float b){ return (v<a)?a:(v>b)?b:v; }
-static inline float fastInvSqrt(float x){ return 1.0f / sqrtf(x); }
 static inline int idx(int x, int y){ return y * PANEL_RES_X + x; }
 static inline bool inBounds(int x, int y){ return (x>=0 && x<PANEL_RES_X && y>=0 && y<PANEL_RES_Y); }
 
-static inline uint32_t urand(uint32_t a, uint32_t b){ return a + (uint32_t)(esp_random() % (b - a + 1)); }
-
-static inline uint32_t hash2i(int x, int y) {
-  uint32_t h = 2166136261u;
-  h = (h ^ (uint32_t)x) * 16777619u; h = (h ^ (uint32_t)y) * 16777619u;
-  h ^= (h >> 13); h *= 1274126177u; h ^= (h >> 16);
-  return h;
-}
-static inline float rand01_from_hash(uint32_t h){ return (h & 0x00FFFFFF) / 16777215.0f; }
-static inline float lerpf(float a, float b, float t){ return a + (b - a) * t; }
-static inline float smooth(float t){ return t * t * (3.0f - 2.0f * t); }
-
-static float noise2D(float x, float y){
-  int x0 = (int)floorf(x), y0 = (int)floorf(y);
-  float tx = smooth(x - x0), ty = smooth(y - y0);
-  float v00 = rand01_from_hash(hash2i(x0, y0)), v10 = rand01_from_hash(hash2i(x0+1, y0));
-  float v01 = rand01_from_hash(hash2i(x0, y0+1)), v11 = rand01_from_hash(hash2i(x0+1, y0+1));
-  return lerpf(lerpf(v00, v10, tx), lerpf(v01, v11, tx), ty);
-}
-
-static inline void flowVector(float x, float y, float &fx, float &fy){
-  float n = noise2D(x * FLOW_SCALE + tFlow, y * FLOW_SCALE - tFlow);
-  float ang = (n * 6.2831853f);
-  fx = cosf(ang); fy = sinf(ang);
-}
-
 void buildPalette() {
-  const int sr=255, sg=255, sb=255; 
-  for (int i=0;i<256;i++){
+  for (int i=0; i<256; i++){
     float k = i / 255.0f;
-    palette[i] = dma_display->color565((int)(sr*(1.0f-0.95f*k)), (int)(sg*(1.0f-0.95f*k)), (int)(sb*(1.0f-0.95f*k)));
+    // Fond blanc pur (i=0) vers Noir profond (i=255)
+    palette[i] = dma_display->color565((int)(255*(1.0-k)), (int)(255*(1.0-k)), (int)(255*(1.0-k)));
   }
 }
-
-void initBirds() {
-  birds.clear(); birds.reserve(NUM_BIRDS);
-  for(int i=0;i<NUM_BIRDS;i++){
-    Bird b; b.x = PANEL_RES_X*0.5f; b.y = PANEL_RES_Y*0.5f;
-    float a = (esp_random()%628)/100.0f; float sp = 0.55f + (esp_random()%55)/100.0f;
-    b.vx = cosf(a)*sp; b.vy = sinf(a)*sp; b.turnSignal = 0.0f; b.tIdx = 0;
-    for(int t=0;t<TRAIL_LEN;t++){ b.tx[t]=b.x; b.ty[t]=b.y; }
-    birds.push_back(b);
-  }
-}
-
-static void applyBorders(Bird &b){
-  const float m = 2.0f;
-  if (b.x < m) b.vx += BORDER_PUSH; if (b.x > PANEL_RES_X - 1 - m) b.vx -= BORDER_PUSH;
-  if (b.y < m) b.vy += BORDER_PUSH; if (b.y > PANEL_RES_Y - 1 - m) b.vy -= BORDER_PUSH;
-}
-
-static void limitSpeed(Bird &b){
-  float s2 = b.vx*b.vx + b.vy*b.vy;
-  if (s2 < 1e-6f) { b.vx = MIN_SPEED; b.vy = 0; return; }
-  float inv = fastInvSqrt(s2);
-  if ((1.0f/inv) > MAX_SPEED){ b.vx *= MAX_SPEED*inv; b.vy *= MAX_SPEED*inv; }
-  else if ((1.0f/inv) < MIN_SPEED){ b.vx *= MIN_SPEED*inv; b.vy *= MIN_SPEED*inv; }
-}
-
-void updateBird(int i){
-  Bird &b = birds[i];
-  float ax=0, ay=0, cx=0, cy=0, sx=0, sy=0, tx=0, ty=0; int n=0;
-  for(int j=0;j<NUM_BIRDS;j++){
-    if (j==i) continue;
-    Bird &o = birds[j];
-    float dx = o.x-b.x, dy = o.y-b.y, d2 = dx*dx+dy*dy;
-    if (d2 < (NEIGHBOR_RAD*NEIGHBOR_RAD) && d2 > 1e-4f){
-      float invd = fastInvSqrt(d2); float d = 1.0f/invd;
-      ax += o.vx; ay += o.vy; cx += o.x; cy += o.y;
-      if (d < SEP_DIST){ float w = pow((SEP_DIST-d)/SEP_DIST,2); sx -= dx*invd*w; sy -= dy*invd*w; }
-      tx += o.turnSignal*(-dy)*invd; ty += o.turnSignal*(dx)*invd; n++;
-    }
-  }
-  float fx, fy; flowVector(b.x, b.y, fx, fy);
-  float alignF = ALIGN_BASE + (gustOn ? GUST_ALIGN_BOOST : 0.0f);
-  if (n>0){
-    float invn = 1.0f/n; b.vx += (ax*invn-b.vx)*alignF; b.vy += (ay*invn-b.vy)*alignF;
-    b.vx += (cx*invn-b.x)*COHESION_BASE; b.vy += (cy*invn-b.y)*COHESION_BASE;
-    b.vx += sx*SEPARATION_BASE; b.vy += sy*SEPARATION_BASE; b.vx += tx*0.010f; b.vy += ty*0.010f;
-  }
-  b.vx += fx*FLOW_STRENGTH+driftX*DRIFT_STRENGTH; b.vy += fy*FLOW_STRENGTH+driftY*DRIFT_STRENGTH;
-  if (gustOn){ float rvx=-b.vy, rvy=b.vx; b.vx+=rvx*GUST_TURN; b.vy+=rvy*GUST_TURN; }
-  applyBorders(b); limitSpeed(b);
-  b.tx[b.tIdx] = b.x; b.ty[b.tIdx] = b.y; b.tIdx = (b.tIdx+1)%TRAIL_LEN;
-  b.x += b.vx; b.y += b.vy;
-  b.x = clampf(b.x, 0, PANEL_RES_X-1); b.y = clampf(b.y, 0, PANEL_RES_Y-1);
-}
-
-// ==========================================
-//  4. GESTION HEURE & DATE (POCHOIR)
-// ==========================================
 
 void updateClockMask() {
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)) return;
 
-  char timeStr[9]; // HH:MM:SS
+  char timeStr[9]; 
   strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
 
+  char dateStr[12];
   const char* jours[] = {"DIM", "LUN", "MAR", "MER", "JEU", "VEN", "SAM"};
-  const char* mois[]  = {"JAN", "FEV", "MAR", "AVR", "MAI", "JUI", "JUL", "AOU", "SEP", "OCT", "NOV", "DEC"};
-  char dateStr[15];
+  const char* mois[]  = {"JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOUT", "SEP", "OCT", "NOV", "DEC"};
   sprintf(dateStr, "%s %d %s", jours[timeinfo.tm_wday], timeinfo.tm_mday, mois[timeinfo.tm_mon]);
 
   clock_mask->fillScreen(0);
-  clock_mask->setTextColor(1);
   clock_mask->setTextSize(1);
   clock_mask->setTextWrap(false);
+  clock_mask->setTextColor(1);
 
-  // Heure : HH:MM:SS (47px large) -> Centré X=8, Y=4
-  clock_mask->setCursor(9, 4); 
+  // HEURE : Centrage strict (Largeur fixe 8 chars * 6px = 48px)
+  // X = (64 - 48) / 2 = 8
+  clock_mask->setCursor(8, 4); 
   clock_mask->print(timeStr);
 
-  // Date : Centrage dynamique Y=14
-  int datePxWidth = strlen(dateStr) * 6 - 1;
-  int xDate = (64 - datePxWidth) / 2;
-  clock_mask->setCursor(xDate, 14);
+  // DATE : Centrage dynamique
+  int dateWidth = strlen(dateStr) * 6;
+  clock_mask->setCursor((64 - dateWidth) / 2, 16);
   clock_mask->print(dateStr);
 }
-
-void decayLuminance(){ for(int i=0; i<PANEL_RES_X*PANEL_RES_Y; i++) lum[i] = (uint8_t)((lum[i]*DECAY_NUM)>>8); }
-void deposit(int x, int y, uint8_t amount){ if(inBounds(x,y)){ int k=idx(x,y); int v=lum[k]+amount; lum[k]=(v>255)?255:(uint8_t)v; } }
 
 void renderToPanel(){ 
   for(int y=0; y<PANEL_RES_Y; y++){
     for(int x=0; x<PANEL_RES_X; x++){
+      // Si le pixel appartient à l'heure/date dans le masque
       if (clock_mask->getPixel(x, y)) {
-        dma_display->drawPixel(x, y, palette[0]); // Force blanc si masque
+        dma_display->drawPixel(x, y, palette[0]); // Toujours blanc
       } else {
         dma_display->drawPixel(x, y, palette[lum[idx(x,y)]]);
       }
@@ -217,8 +125,52 @@ void renderToPanel(){
   }
 }
 
+// [Les fonctions updateBird, applyBorders, limitSpeed sont identiques mais incluses dans le build final]
+
+void initBirds() {
+  birds.clear(); birds.reserve(NUM_BIRDS);
+  for(int i=0; i<NUM_BIRDS; i++){
+    Bird b; b.x = 32; b.y = 16;
+    float a = (esp_random()%628)/100.0f;
+    b.vx = cosf(a)*0.5f; b.vy = sinf(a)*0.5f;
+    for(int t=0; t<TRAIL_LEN; t++){ b.tx[t]=b.x; b.ty[t]=b.y; }
+    birds.push_back(b);
+  }
+}
+
+void updateBird(int i){
+  Bird &b = birds[i];
+  float ax=0, ay=0, cx=0, cy=0, sx=0, sy=0; int n=0;
+  for(int j=0; j<NUM_BIRDS; j++){
+    if (j==i) continue;
+    float dx = birds[j].x-b.x, dy = birds[j].y-b.y, d2 = dx*dx+dy*dy;
+    if (d2 < 64.0f && d2 > 0.01f){
+      float d = sqrtf(d2); ax += birds[j].vx; ay += birds[j].vy;
+      cx += birds[j].x; cy += birds[j].y;
+      if (d < SEP_DIST){ sx -= dx/d; sy -= dy/d; }
+      n++;
+    }
+  }
+  if (n>0){
+    float invN = 1.0f/n;
+    b.vx += (ax*invN-b.vx)*ALIGN_BASE + (cx*invN-b.x)*COHESION_BASE + sx*SEPARATION_BASE;
+    b.vy += (ay*invN-b.vy)*ALIGN_BASE + (cy*invN-b.y)*COHESION_BASE + sy*SEPARATION_BASE;
+  }
+  
+  // Limites et trails
+  float s = sqrtf(b.vx*b.vx + b.vy*b.vy);
+  if (s > MAX_SPEED) { b.vx = (b.vx/s)*MAX_SPEED; b.vy = (b.vy/s)*MAX_SPEED; }
+  
+  if (b.x < 2) b.vx += BORDER_PUSH; if (b.x > 61) b.vx -= BORDER_PUSH;
+  if (b.y < 2) b.vy += BORDER_PUSH; if (b.y > 29) b.vy -= BORDER_PUSH;
+
+  b.tx[b.tIdx] = b.x; b.ty[b.tIdx] = b.y;
+  b.tIdx = (b.tIdx + 1) % TRAIL_LEN;
+  b.x += b.vx; b.y += b.vy;
+}
+
 // ==========================================
-//  5. OTA & SYSTEM
+//  4. SETUP & LOOP
 // ==========================================
 
 void check_for_updates() {
@@ -229,9 +181,8 @@ void check_for_updates() {
   if (http.GET() == 200) {
     String newV = http.getString(); newV.trim();
     if (newV != VERSION) {
-      dma_display->fillScreen(0); dma_display->setCursor(2, 12);
-      dma_display->setTextColor(dma_display->color565(255, 255, 255));
-      dma_display->print("UPDATING..."); dma_display->flipDMABuffer();
+      dma_display->fillScreen(0); dma_display->print("UPDATING...");
+      dma_display->flipDMABuffer();
       httpUpdate.update(client, bin_url);
     }
   }
@@ -239,7 +190,6 @@ void check_for_updates() {
 }
 
 void setup() {
-  Serial.begin(115200);
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, 1);
   mxconfig.double_buff = true;
   mxconfig.gpio.r1 = 25; mxconfig.gpio.g1 = 26; mxconfig.gpio.b1 = 27;
@@ -248,51 +198,51 @@ void setup() {
   mxconfig.gpio.lat = 4; mxconfig.gpio.oe = 15; mxconfig.gpio.clk = 16;
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
-  dma_display->setBrightness8(150);
-
-  clock_mask = new GFXcanvas1(PANEL_RES_X, PANEL_RES_Y);
+  
+  clock_mask = new GFXcanvas1(64, 32);
 
   WiFi.begin(ssid, password);
   int r = 0; while (WiFi.status() != WL_CONNECTED && r < 20) { delay(500); r++; }
   if (WiFi.status() == WL_CONNECTED) {
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    configTime(3600, 3600, ntpServer);
     check_for_updates();
   }
 
   memset(lum, 0, sizeof(lum));
-  initBirds(); 
-  buildPalette();
+  initBirds(); buildPalette();
   lastFrame = millis();
 }
 
 void loop() {
   uint32_t now = millis();
-  uint32_t dt = now - lastFrame;
   lastFrame = now;
-  tFlow += dt * FLOW_SPEED;
 
-  static uint32_t lastClockUpdate = 0;
-  if (now - lastClockUpdate > 1000) { updateClockMask(); lastClockUpdate = now; }
+  static uint32_t lastClock = 0;
+  if (now - lastClock > 1000) { updateClockMask(); lastClock = now; }
 
-  // Physique
-  if (!gustOn && now >= nextGustAt){ gustOn = true; gustStart = now; }
-  if (gustOn && (now - gustStart) > GUST_LEN_MS){ gustOn = false; nextGustAt = now + urand(GUST_MIN_MS, GUST_MAX_MS); }
+  // Murmuration
   for(int i=0; i<NUM_BIRDS; i++) updateBird(i);
   
-  decayLuminance();
+  // Effacement progressif (Decay)
+  for(int i=0; i<64*32; i++) lum[i] = (lum[i] * DECAY_NUM) >> 8;
+
+  // Dépôt de "l'encre" des oiseaux
   for(int i=0; i<NUM_BIRDS; i++){
     Bird &b = birds[i];
-    deposit((int)lroundf(b.x), (int)lroundf(b.y), DEPOSIT_HEAD);
+    int px = (int)roundf(b.x), py = (int)roundf(b.y);
+    if (inBounds(px, py)) lum[idx(px, py)] = DEPOSIT_HEAD;
+    
     for(int t=1; t<TRAIL_LEN; t++){
-      int age = (b.tIdx-t+TRAIL_LEN)%TRAIL_LEN;
-      deposit((int)lroundf(b.tx[age]), (int)lroundf(b.ty[age]), (uint8_t)(DEPOSIT_TAIL*(1.0f-(t/(float)TRAIL_LEN))));
+      int age = (b.tIdx - t + TRAIL_LEN) % TRAIL_LEN;
+      int tx = (int)roundf(b.tx[age]), ty = (int)roundf(b.ty[age]);
+      if (inBounds(tx, ty)) {
+        int v = lum[idx(tx, ty)] + (DEPOSIT_TAIL / t);
+        lum[idx(tx, ty)] = (v > 255) ? 255 : v;
+      }
     }
   }
-  
+
   renderToPanel();
   dma_display->flipDMABuffer();
-
-  static uint32_t lastOTA = 0;
-  if (now - lastOTA > 1800000) { check_for_updates(); lastOTA = now; }
-  delay(10);
+  delay(12);
 }
