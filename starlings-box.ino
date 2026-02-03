@@ -12,7 +12,7 @@
 // ==========================================
 //  1. PARAMÈTRES SYSTÈME
 // ==========================================
-const char* VERSION  = "2.8"; 
+const char* VERSION  = "2.9"; 
 #ifndef WIFI_SSID
   #define WIFI_SSID "TON_SSID" 
   #define WIFI_PASS "TON_PASS"
@@ -34,7 +34,7 @@ const int   daylightOffset_sec = 3600;
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
 
-static const int   NUM_BIRDS        = 20;    // Plus d'oiseaux pour mieux "révéler" l'heure
+static const int   NUM_BIRDS        = 80;    // Plus d'oiseaux pour mieux "révéler" l'heure
 static const float MAX_SPEED        = 0.50f;
 static const float MIN_SPEED        = 0.25f;
 static const float NEIGHBOR_RAD     = 8.0f;
